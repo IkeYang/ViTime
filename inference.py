@@ -22,7 +22,7 @@ model.eval()
 
 
 
-xData=np.sin(np.arange(512)/10)
+xData=np.sin(np.arange(512)/10)+np.sin(np.arange(512)/5+50)+np.cos(np.arange(512)+50)
 args.realInputLength=len(xData)
 yp=model.inference(xData)
 
