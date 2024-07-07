@@ -1,6 +1,6 @@
 # ViTime: A Visual Intelligence-based Foundation Model for Time Series Forecasting
 
-![ViTime Architecture](Architecture.jpg)
+Architecture.jpg
 
 ## Introduction
 
