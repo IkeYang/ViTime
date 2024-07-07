@@ -82,8 +82,9 @@ args.realInputLength = len(xData)
 yp = model.inference(xData)
 
 # Plot results
-plt.plot(np.concatenate([xData, yp.flatten()], axis=0))
-plt.plot(xData)
+plt.plot(np.concatenate([xData,yp.flatten()],axis=0),label='Prediction')
+plt.plot(xData,label='Input Sequence')
+plt.legend()
 plt.show()
 ```
 
