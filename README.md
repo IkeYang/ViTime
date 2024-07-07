@@ -39,13 +39,13 @@ pip install -r requirements.txt
 We provide weights for three models in the following links:
 
 1. **ViTime_V1.pth**: Specialized for look back window = 512
-   - [Model Weights]()
+   - [Model Weights](https://drive.google.com/file/d/1JfrK62y4iTd1f8F_xNU6e3fARwpuRwhJ/view?usp=sharing)
 
 2. **ViTime_1072.pth**: Specialized for look back window = 1072
-   - [Model Weights]()
+   - [Model Weights](https://drive.google.com/file/d/17Sn40KR87Vb5YEh7ysN5Z1gm4CiWd_jy/view?usp=sharing)
 
 3. **ViTime_V2.pth**: Flexible input look back window = [1, 1024]
-   - [Model Weights]()
+   - [Model Weights](https://drive.google.com/file/d/1kwfvmibEW9u5A_ybYWE2gNZyE9khYs7f/view?usp=sharing)
 
 ### Model Inference
 
