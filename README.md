@@ -1,10 +1,10 @@
 
-# ViTime: A Visual Intelligence-based Foundation Model for Time Series Forecasting
+# ViTime: A Visual Intelligence-based Foundation Model for Time Series Forecasting 
 
 ![ViTime Architecture](Architecture.png)
 
 ViTime is a novel Visual Intelligence-based foundation model for time series forecasting (TSF), leveraging visual data processing paradigms to enhance forecasting capabilities.
-
+[[Paper]()]
 ## Key Features
 
 - **Visual Intelligence**: Utilizes visual data processing to enhance time series analysis and forecasting.
@@ -35,6 +35,18 @@ Install the required packages:
 pip install -r requirements.txt
 ```
 
+### Weight download
+We provide weights for three models in the following links:
+
+1. **ViTime_V1.pth**: Specialized for look back window = 512
+   - [Model Weights]()
+
+2. **ViTime_1072.pth**: Specialized for look back window = 1072
+   - [Model Weights]()
+
+3. **ViTime_V2.pth**: Flexible input look back window = [1, 1024]
+   - [Model Weights]()
+
 ### Model Inference
 
 To run the inference code, follow these steps:
@@ -52,7 +64,7 @@ import torch
 deviceNum = 0
 torch.cuda.set_device(deviceNum)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-checkpoint = torch.load(r'C:\Users\user\Downloads\ViTime_V2_Opensource.pth', map_location=device)
+checkpoint = torch.load(r'ViTime_V2', map_location=device)
 args = checkpoint['args']
 args.device = device
 args.flag = 'test'
@@ -96,15 +108,5 @@ We welcome contributions to enhance ViTime. Please submit pull requests or open 
 
 This project is licensed under the MIT License.
 
-## Acknowledgments
 
-We thank the contributors and the community for their support and valuable feedback.
 
----
-
-For more details, please refer to our paper and documentation. Feel free to reach out with any questions or suggestions.
-
----
-
-*This README was generated based on the model's abstract and inference script provided.*
-```
