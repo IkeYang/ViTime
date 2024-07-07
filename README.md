@@ -25,7 +25,7 @@ ViTime is a novel Visual Intelligence-based foundation model for time series for
 Clone the repository:
 
 ```bash
-git clone https://github.com/IkeYang/ViTime.git
+git clone https://github.com/IkeYang/ViTime
 cd ViTime
 ```
 
