@@ -26,7 +26,9 @@ xData=np.sin(np.arange(512)/10)+np.sin(np.arange(512)/5+50)+np.cos(np.arange(512
 args.realInputLength=len(xData)
 yp=model.inference(xData)
 
-plt.plot(np.concatenate([xData,yp.flatten()],axis=0))
-plt.plot(xData)
+plt.plot(np.concatenate([xData,yp.flatten()],axis=0),label='Prediction')
+plt.plot(xData,label='Input Sequence')
+plt.legend()
 plt.show()
+
 
