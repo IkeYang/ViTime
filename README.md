@@ -34,7 +34,7 @@ Install the required packages:
 pip install -r requirements.txt
 ```
 
-### Weight download
+### Checkpoints
 We provide weights for three models in the following links:
 
 1. **ViTime_V1.pth**: Specialized for look back window = 512
