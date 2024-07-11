@@ -99,7 +99,8 @@ This script loads the ViTime model, performs inference on example sinusoidal dat
 ## Experiments and Results
 
 ViTime has been evaluated on a diverse set of previously unseen forecasting datasets, demonstrating state-of-the-art zero-shot performance. The model often surpasses the best individually trained supervised models, showcasing the potential of visual intelligence in time series forecasting.
-
+![zero-shot](zeroshot.png)
+![fine-tune](finetune.png)
 ## Contributing
 
 We welcome contributions to enhance ViTime. Please submit pull requests or open issues for any improvements or bug fixes.
