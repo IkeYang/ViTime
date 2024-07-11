@@ -4,7 +4,7 @@
 ![ViTime Architecture](Architecture.png)
 
 ViTime is a novel Visual Intelligence-based foundation model for time series forecasting (TSF), leveraging visual data processing paradigms to enhance forecasting capabilities.
-[[Paper]()]
+[[Paper](https://arxiv.org/abs/2407.07311)]
 ## Key Features
 
 - **Visual Intelligence**: Utilizes visual data processing to enhance time series analysis and forecasting.
