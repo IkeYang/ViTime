@@ -63,7 +63,7 @@ import torch
 deviceNum = 0
 torch.cuda.set_device(deviceNum)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-checkpoint = torch.load(r'ViTime_V2', map_location=device)
+checkpoint = torch.load(r'ViTime_V2.pth', map_location=device)
 args = checkpoint['args']
 args.device = device
 args.flag = 'test'
