@@ -15,7 +15,7 @@ ViTime is a novel Visual Intelligence-based foundation model for time series for
 
 ### Prerequisites
 
-- Python 3.7+
+- Python 3.9+
 - PyTorch
 
 
