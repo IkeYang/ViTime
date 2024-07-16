@@ -10,13 +10,9 @@ from functools import partial
 import warnings
 import cv2
 import pickle
-from PyEMD import EMD
+from pyemd import EMD
 from PIL import Image, ImageDraw
 import matplotlib.pyplot as plt
-
-
-
-
 
 
 # Custom dataset for VR

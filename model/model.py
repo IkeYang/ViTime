@@ -2,10 +2,10 @@
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
-from model.RefiningModel import RefiningModel
-from model.ViTimeAutoencoder import ViTimeAutoencoder
+from ViTime.model.RefiningModel import RefiningModel
+from ViTime.model.ViTimeAutoencoder import ViTimeAutoencoder
 import copy
-from datafactory.loadData import Dataset_ViTime
+from ViTime.datafactory.loadData import Dataset_ViTime
 
 
 class ViTime(nn.Module):

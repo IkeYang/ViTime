@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from model.mobilenetv2 import mobilenetv2
+from ViTime.model.mobilenetv2 import mobilenetv2
 
 
 
