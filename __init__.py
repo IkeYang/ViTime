@@ -27,13 +27,22 @@ class AliasFinder(MetaPathFinder):
         return None
 
 
-alias_map = {
-    'PyEMD': 'pyemd'
-}
+try:
+    # Check import functionality
+    import pyemd as PyEMD
+    from PyEMD.CEEMDAN import CEEMDAN  # noqa
 
-# Insert the custom finder at the beginning of sys.meta_path
-sys.meta_path.insert(0, AliasFinder(alias_map))
+except ImportError as e:
+    print(e)
 
-# Verify aliased import functionality
-import pyemd as PyEMD
-from PyEMD.CEEMDAN import CEEMDAN  # noqa
+    # Fix pyemd import
+    alias_map = {
+        'PyEMD': 'pyemd'
+    }
+
+    # Insert the custom finder at the beginning of sys.meta_path
+    sys.meta_path.insert(0, AliasFinder(alias_map))
+
+    # Verify aliased import functionality
+    import pyemd as PyEMD
+    from PyEMD.CEEMDAN import CEEMDAN  # noqa
