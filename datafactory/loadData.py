@@ -140,13 +140,17 @@ class Dataset_ViTime(Dataset):
         realInputLength=T
 
         seq_xO= np.copy(dataX)
-
-
-
-        std = (np.std(seq_xO, axis=0).reshape(1, -1) + 1e-7)
         seq = (seq_xO ** self.args.muNorm) * np.sign(seq_xO)
-        mu0 = np.mean(seq, axis=0) + 1e-7
-        mu = np.sqrt(np.abs(mu0)) * np.sign(mu0).reshape(1, -1)
+
+        if self.std is None:
+            std = (np.std(seq_xO, axis=0).reshape(1, -1) + 1e-7)
+            mu0 = np.mean(seq, axis=0) + 1e-7
+            mu = np.sqrt(np.abs(mu0)) * np.sign(mu0).reshape(1, -1)
+        else:
+            std=np.array(self.std).reshape(1, -1)+ 1e-7
+            mu=np.array(self.mu).reshape(1, -1)+ 1e-7
+
+
         seq_x = (seq_xO - mu) / std
 
         if realInputLength < self.seq_len:
@@ -161,7 +165,11 @@ class Dataset_ViTime(Dataset):
 
 
         x, d = self.data2Pixel(seq_x, None)
-
+        if realInputLength < self.seq_len and self.args.upscal:
+            x[:, :self.args.size[0] -realInputLength * 2, :] = 0
+        elif realInputLength < self.seq_len and not self.args.upscal:
+            x[:, :self.args.size[0] - realInputLength , :] = 0
+        x[:, self.args.size[0]:, :] = 0
         if self.args.ks[0] != 1 or self.args.ks[1] != 1:
             kernel_size = (self.args.ks[0], self.args.ks[1])
             sigmaX = 0
