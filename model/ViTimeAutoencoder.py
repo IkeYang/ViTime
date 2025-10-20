@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from timm.models.vision_transformer import PatchEmbed, Block
-
+import matplotlib.pyplot as plt
 
 def get_2d_sincos_pos_embed(embed_dim, grid_sizeh, grid_sizew, cls_token=False):
     """
@@ -53,6 +53,60 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
 
     emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
     return emb
+
+def get_2d_sincos_pos_embed_Rope(embed_dim, grid_sizeh, grid_sizew, cls_token=False):
+    """
+    Generate 2D positional embeddings with RoPE (Rotary Position Embedding).
+    embed_dim: embedding dimension
+    grid_sizeh: grid height
+    grid_sizew: grid width
+    cls_token: whether to add cls token
+    return: [grid_sizeh*grid_sizew, embed_dim] or [1+grid_sizeh*grid_sizew, embed_dim]
+    """
+    assert embed_dim % 2 == 0
+
+    # Generate position index grid
+    pos_h = np.arange(grid_sizeh, dtype=np.float32)
+    pos_w = np.arange(grid_sizew, dtype=np.float32)
+    pos_h, pos_w = np.meshgrid(pos_h, pos_w, indexing='ij')
+
+    # Flatten positions
+    pos_h = pos_h.reshape(-1)  # (H*W,)
+    pos_w = pos_w.reshape(-1)  # (H*W,)
+
+    # Use half of the dims for h and half for w
+    h_dim = w_dim = embed_dim // 2
+
+    def get_rope_embed(pos, dim):
+        """Generate RoPE encoding"""
+        # Compute frequencies
+        freqs = 10000 ** (-2 * np.arange(dim // 2) / dim)  # (D/4,)
+
+        # Compute rotation angles
+        theta = pos.reshape(-1, 1) * freqs  # (H*W, D/4)
+
+        # Generate sin and cos
+        emb_cos = np.cos(theta)  # (H*W, D/4)
+        emb_sin = np.sin(theta)  # (H*W, D/4)
+
+        # Interleave
+        emb = np.zeros((pos.shape[0], dim))  # (H*W, D/2)
+        emb[:, 0::2] = emb_cos
+        emb[:, 1::2] = emb_sin
+        return emb
+
+    # Compute RoPE encoding for h and w separately
+    emb_h = get_rope_embed(pos_h, h_dim)  # (H*W, D/2)
+    emb_w = get_rope_embed(pos_w, w_dim)  # (H*W, D/2)
+
+    # Concatenate both directions
+    pos_embed = np.concatenate([emb_h, emb_w], axis=1)  # (H*W, D)
+
+    # Optionally add cls token position embedding
+    if cls_token:
+        pos_embed = np.concatenate([np.zeros([1, embed_dim]), pos_embed], axis=0)
+
+    return pos_embed
 
 
 
@@ -107,18 +161,33 @@ class ViTimeAutoencoder(nn.Module):
         # --------------------------------------------------------------------------
 
         self.norm_pix_loss = norm_pix_loss
-
+        if hasattr(args,'ROPE'):
+            self.ROPE=args.ROPE
+        else:
+            self.ROPE = False
+        print('self.ROPE',self.ROPE)
         self.initialize_weights()
 
     def initialize_weights(self):
         # initialization
         # initialize (and freeze) pos_embed by sin-cos embedding
-        pos_embed = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(self.img_sizeh/self.patch_sizeh),int((self.inputL+self.predictionL)/self.patch_sizew),
-                                            cls_token=True)
-        self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
+        if self.ROPE:
+            pos_embed = get_2d_sincos_pos_embed_Rope(self.pos_embed.shape[-1], int(self.img_sizeh / self.patch_sizeh),
+                                                int((self.inputL + self.predictionL) / self.patch_sizew),
+                                                cls_token=True)
+            self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
 
-        decoder_pos_embed = get_2d_sincos_pos_embed(self.decoder_pos_embed.shape[-1],
-                                                    int(self.img_sizeh/self.patch_sizeh),int((self.inputL+self.predictionL)/self.patch_sizew), cls_token=True)
+            decoder_pos_embed = get_2d_sincos_pos_embed_Rope(self.decoder_pos_embed.shape[-1],
+                                                        int(self.img_sizeh / self.patch_sizeh),
+                                                        int((self.inputL + self.predictionL) / self.patch_sizew),
+                                                        cls_token=True)
+        else:
+            pos_embed = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(self.img_sizeh/self.patch_sizeh),int((self.inputL+self.predictionL)/self.patch_sizew),
+                                                cls_token=True)
+            self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
+
+            decoder_pos_embed = get_2d_sincos_pos_embed(self.decoder_pos_embed.shape[-1],
+                                                        int(self.img_sizeh/self.patch_sizeh),int((self.inputL+self.predictionL)/self.patch_sizew), cls_token=True)
         self.decoder_pos_embed.data.copy_(torch.from_numpy(decoder_pos_embed).float().unsqueeze(0))
 
         # initialize patch_embed like nn.Linear (instead of nn.Conv2d)
@@ -226,6 +295,7 @@ class ViTimeAutoencoder(nn.Module):
     def forward(self, imgs, mask_ratio=0):
         imgs = torch.einsum('bcwh->bchw', imgs)
         latent= self.forward_ViTimeTokenizer(imgs, mask_ratio)
+
         pred = self.forward_decoder(latent)  # [N, L, p*p*3]
         reconstructImg=self.unpatchify(pred)
         reconstructImg = torch.einsum('bchw->bcwh', reconstructImg)
