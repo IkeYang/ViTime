@@ -8,5 +8,4 @@ Nothing is loaded at import; consumers should handle missing paths.
 # ——— Inference interfaces used by tools.py ———
 
 
-VITIME_MODEL_PATH: str | None = "your_Path"  # e.g., r"/models/VISTA-Forecaster-env.pth"
-
+VITIME_MODEL_PATH: str | None = "your_Path"  
