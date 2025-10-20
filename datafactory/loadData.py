@@ -10,11 +10,8 @@ from functools import partial
 import warnings
 import cv2
 import pickle
-from PyEMD import EMD
 from PIL import Image, ImageDraw
 import matplotlib.pyplot as plt
-
-
 
 
 
@@ -78,7 +75,65 @@ class Dataset_ViTime(Dataset):
             imgX0 = np.copy(imgY0)
             imgX0[:, TX:, :] = 0
             return imgX0, imgY0, d
+    def data2PixelWithGaussian(self, dataXIn, dataYIN, std_data):
+        '''
+        Generate pixel images from MA and STD using Gaussian distribution (fully vectorized).
+        :param dataXIn: MA of input segment (used as Gaussian mean)
+        :param dataYIN: MA of full sequence (used as Gaussian mean)
+        :param std_data: STD of full sequence (used as Gaussian std)
+        :return: imgX, imgY, d
+        '''
+        # Copy and clip ranges
+        dataX = np.copy(dataXIn)  # MA as mean
+        dataY = np.copy(dataYIN)  # MA as mean
+        std_data = np.copy(std_data)  # STD as standard deviation
 
+        # Clip to range
+        dataX[dataX > self.maxScal] = self.maxScal
+        dataX[dataX < -self.maxScal] = -self.maxScal
+        dataY[dataY > self.maxScal] = self.maxScal
+        dataY[dataY < -self.maxScal] = -self.maxScal
+        
+        px = dataX.shape[0]
+        py = dataY.shape[0]
+        TY = dataY.shape[1]
+        TX = dataX.shape[1]
+        
+        maxstd = self.maxScal
+        resolution = maxstd * 2 / (self.h - 1)
+        
+        # Create height axis (h,)
+        y_coords = np.linspace(-maxstd, maxstd, self.h)
+
+        # Vectorized Gaussian computation
+        # Expand dims for broadcasting
+        ma_expanded = dataY[:, :, np.newaxis]  # (py, TY, 1) - MA as mean
+        std_expanded = std_data[:, :, np.newaxis]  # (py, TY, 1) - STD as std
+        y_expanded = y_coords[np.newaxis, np.newaxis, :]  # (1, 1, h)
+        
+        # Ensure std is not zero
+        std_expanded = np.maximum(std_expanded, 0.0001)
+        
+        # Vectorized Gaussian computation (py, TY, h)
+        gaussian_dist = np.exp(-0.5 * ((y_expanded - ma_expanded) / std_expanded/2) ** 2)
+        
+        # Normalize along height dimension
+        max_vals = np.max(gaussian_dist, axis=2, keepdims=True)
+        max_vals = np.maximum(max_vals, 1e-8)  # avoid division by zero
+        imgY0 = gaussian_dist / max_vals
+        
+        # Compute d-matrix using MA positions
+        indY = np.floor((dataY + maxstd) / resolution).astype('int16')
+        indY = np.clip(indY, 0, self.h - 1)  # ensure index in valid range
+        d = self.D[list(indY), :]
+        
+        # Create input segment image
+        imgX0 = np.copy(imgY0)
+        imgX0[:, TX:, :] = 0
+        
+        return imgX0, imgY0, d
+
+    
     def Pixel2data(self, imgX0, method='max'):
         if len(imgX0.shape) == 3:
             imgX0 = imgX0.unsqueeze(0)
@@ -134,55 +189,290 @@ class Dataset_ViTime(Dataset):
         :return:
         '''
 
-
         T, c = dataX.shape
+        if self.inferenceType == 'KeyP':
+            seq_x = self.linear_interpolation(dataX).reshape(-1, 1)
+            inputLength=seq_x.shape[0]
+            dataZero=np.zeros([512*2+720*2,])
+            dataZero[self.KeyP[:,0].astype(int)]=self.KeyP[:,1]
+            sampled_array=np.copy(dataZero[inputLength:])
+            all_positions = np.arange(len(sampled_array))
+            interpolated_array = np.interp(all_positions, self.KeyP[:,0]-inputLength, self.KeyP[:,1])
+            interpolated_array = interpolated_array.reshape(-1, 1)
+            interpolated_array_whole = np.concatenate((seq_x[:inputLength], interpolated_array), axis=0)
 
-        realInputLength=T
+            std = (np.std(interpolated_array_whole, axis=0).reshape(1, -1) + np.random.rand() * 1e-7)
+            if hasattr(self.args, 'muNorm'):
+                seq = (interpolated_array_whole ** self.args.muNorm) * np.sign(interpolated_array_whole)
+                mu0 = np.mean(seq, axis=0) + 1e-7
+                mu = np.sqrt(np.abs(mu0)) * np.sign(mu0).reshape(1, -1)
+            else:
+                mu = np.mean(interpolated_array_whole, axis=0).reshape(1, -1)
 
-        seq_xO= np.copy(dataX)
-        seq = (seq_xO ** self.args.muNorm) * np.sign(seq_xO)
+            seq_x = (seq_x - mu) / std
+            interpolated_array_whole = (interpolated_array_whole - mu) / std
 
-        if self.std is None:
-            std = (np.std(seq_xO, axis=0).reshape(1, -1) + 1e-7)
-            mu0 = np.mean(seq, axis=0) + 1e-7
-            mu = np.sqrt(np.abs(mu0)) * np.sign(mu0).reshape(1, -1)
-        else:
-            std=np.array(self.std).reshape(1, -1)+ 1e-7
-            mu=np.array(self.mu).reshape(1, -1)+ 1e-7
-
-        std= std*1.1
-        seq_x = (seq_xO - mu) / std
-
-        if realInputLength < self.seq_len:
-            seq0 = np.ones([self.seq_len - seq_x.shape[0], seq_x.shape[1]]) * mu
-            seq1 = np.ones([self.pred_len, seq_x.shape[1]]) * mu
-            seq_x = np.concatenate((seq0, seq_x,seq1), axis=0)
-        else:
-            seq1 = np.ones([self.pred_len, seq_x.shape[1]]) * mu
-            seq_x = np.concatenate((seq_x, seq1), axis=0)
-        if self.args.upscal:
-            seq_x = self.linear_interpolation(seq_x)
-
-
-        x, d = self.data2Pixel(seq_x, None)
-        if realInputLength < self.seq_len and self.args.upscal:
-            x[:, :self.args.size[0] -realInputLength * 2, :] = 0
-        elif realInputLength < self.seq_len and not self.args.upscal:
-            x[:, :self.args.size[0] - realInputLength , :] = 0
-        x[:, self.args.size[0]:, :] = 0
-        if self.args.ks[0] != 1 or self.args.ks[1] != 1:
-            kernel_size = (self.args.ks[0], self.args.ks[1])
-            sigmaX = 0
-            for i in range(x.shape[0]):
-                x[i] = cv2.GaussianBlur(x[i], kernel_size, sigmaX) * kernel_size[0]
-        if realInputLength < self.seq_len and self.args.upscal:
-            x[:, :self.args.size[0] -realInputLength * 2, :] = 0
-        elif realInputLength < self.seq_len and not self.args.upscal:
-            x[:, :self.args.size[0] - realInputLength , :] = 0
-        x[:, self.args.size[0]:, :] = 0
+            maxScalTrue = np.max(np.abs(interpolated_array_whole))
+            stdTrue = maxScalTrue / (self.maxScal - 1.5) * std
+            seq_x = seq_x * std / stdTrue
+            interpolated_array_whole = interpolated_array_whole * std / stdTrue
 
 
-        return torch.from_numpy(x).float(), torch.from_numpy(d).float(),mu,std
+            # x, y, d = self.data2Pixel(seq_x[:self.seq_len], seq_x)  # c,w,h
+
+            x, kpImg, d = self.data2Pixel(interpolated_array_whole[:inputLength], interpolated_array_whole)  # c,w,h
+            kpImg[:, inputLength:, :][:, sampled_array == 0, :] = 0
+            kpImg[0, :inputLength, :] = 0
+            if self.args.ks[0] != 1 or self.args.ks[1] != 1:
+                try:
+                    kernel_size = (
+                    self.args.ks[0], self.args.ks[1])  # This is a wide kernel that will blur horizontally
+                    sigmaX = 0  # Let OpenCV automatically determine the standard deviation
+                    # Apply Gaussian Blur in the width (horizontal) direction
+                    x[0] = cv2.GaussianBlur(x[0], kernel_size, sigmaX) * kernel_size[0]
+                except:
+                    pass
+            kernel_size = (
+                int(self.args.ks[0]), int(self.args.ks[1]))  # This is a wide kernel that will blur horizontally
+            sigmaX = 0  # Let OpenCV automatically determine the standard deviation
+            # Apply Gaussian Blur in the width (horizontal) direction
+            kpImg[0] = cv2.GaussianBlur(kpImg[0], kernel_size, sigmaX) * kernel_size[0]
+
+            x = x + kpImg * self.args.ks[0] / 2.5
+            return torch.from_numpy(x).float(), torch.from_numpy(d).float(), mu, stdTrue
+
+        elif self.inferenceType == 'Decomp':
+            realInputLength=T
+            seq_xO= np.copy(dataX)
+            seq = (seq_xO ** self.args.muNorm) * np.sign(seq_xO)
+
+            if self.std is None:
+                std = (np.std(seq_xO, axis=0).reshape(1, -1) + 1e-7)
+            else:
+                std=np.array(self.std).reshape(1, -1)+ 1e-7
+
+
+            if self.mu is None:
+                mu0 = np.mean(seq, axis=0) + 1e-7
+                mu = np.sqrt(np.abs(mu0)) * np.sign(mu0).reshape(1, -1)
+            else:
+                mu = np.array(self.mu).reshape(1, -1) + 1e-7
+
+            
+            seq_x = (seq_xO - mu) / std
+            x, d = self.data2Pixel(seq_x, None)
+            if self.args.ks[0] != 1 or self.args.ks[1] != 1:
+                kernel_size = (self.args.ks[0], self.args.ks[1])
+                sigmaX = 0
+                for i in range(x.shape[0]):
+                    x[i] = cv2.GaussianBlur(x[i], kernel_size, sigmaX) * kernel_size[0]
+            return torch.from_numpy(x).float(), torch.from_numpy(d).float(), mu, std
+
+        elif self.inferenceType =='General':
+            realInputLength = T
+
+            seq_xO = np.copy(dataX)
+            seq = (seq_xO ** self.args.muNorm) * np.sign(seq_xO)
+
+            if self.std is None:
+                std = (np.std(seq_xO, axis=0).reshape(1, -1) + 1e-7)
+            else:
+                std = np.array(self.std).reshape(1, -1) + 1e-7
+
+            if self.mu is None:
+                mu0 = np.mean(seq, axis=0) + 1e-7
+                mu = np.sqrt(np.abs(mu0)) * np.sign(mu0).reshape(1, -1)
+            else:
+                mu = np.array(self.mu).reshape(1, -1) + 1e-7
+
+            std = std*1.2
+            seq_x = (seq_xO - mu) / std
+
+            if self.args.upscal:
+                seq_x = self.linear_interpolation(seq_x)
+            wholeSeq=np.zeros([(512+720)*2,c])
+            wholeSeq[:seq_x.shape[0],:]=seq_x
+            x,y, d = self.data2Pixel(seq_x, wholeSeq)
+
+            if self.args.ks[0] != 1 or self.args.ks[1] != 1:
+                kernel_size = (self.args.ks[0], self.args.ks[1])
+                sigmaX = 0
+                for i in range(x.shape[0]):
+                    x[i] = cv2.GaussianBlur(x[i], kernel_size, sigmaX) * kernel_size[0]
+            return torch.from_numpy(x).float(), torch.from_numpy(d).float(), mu, std
+
+        elif self.inferenceType =='Envelope':
+
+            seq_xO = np.copy(dataX)
+            seq_xO_mu = (self.EnvelopeUpper+self.EnvelopeLower)/2
+            scale = 1
+
+            std = (np.std(seq_xO, axis=0).reshape(1, -1) + 1e-7) / scale
+            swift = 0
+            if hasattr(self.args, 'muNorm'):
+                seq = (seq_xO_mu ** self.args.muNorm) * np.sign(seq_xO_mu)
+                mu0 = np.mean(seq, axis=0) + 1e-7
+                mu = np.sqrt(np.abs(mu0)) * np.sign(mu0).reshape(1, -1) - swift
+            else:
+                mu = np.mean(seq_xO_mu, axis=0).reshape(1, -1) - swift
+
+
+            seq_x = (seq_xO - mu) / std
+            EnvelopeUpper = (self.EnvelopeUpper - mu) / std
+            EnvelopeLower = (self.EnvelopeLower - mu) / std
+            maxScalTrue=np.max([np.max(EnvelopeUpper),np.max(np.abs(EnvelopeLower))])
+            stdTrue=maxScalTrue/(self.maxScal-1.5)*std
+
+
+            seq_x=seq_x*std/stdTrue
+            EnvelopeUpper=EnvelopeUpper*std/stdTrue
+            EnvelopeLower=EnvelopeLower*std/stdTrue
+
+            EnvelopeUpper=EnvelopeUpper.T
+            EnvelopeLower=EnvelopeLower.T
+            if hasattr(self.args, 'scal') and self.args.scal == 2:
+                seq_x = self.linear_interpolation(seq_x)
+
+            wholeSeq = np.zeros([(512 + 720) * 2, c])
+            wholeSeq[:seq_x.shape[0], :] = seq_x
+
+
+            _, upper_envelope_Img, _ = self.data2Pixel(EnvelopeUpper[:seq_x.shape[0]], EnvelopeUpper)
+            _, lower_envelope_Img, _ = self.data2Pixel(EnvelopeLower[:seq_x.shape[0]], EnvelopeLower)
+
+            x, y, d = self.data2Pixel(seq_x, wholeSeq)  # c,w,h
+
+            if self.args.ks[0] != 1 or self.args.ks[1] != 1:
+                try:
+                    kernel_size = (
+                    self.args.ks[0], self.args.ks[1])  # This is a wide kernel that will blur horizontally
+                    sigmaX = 0  # Let OpenCV automatically determine the standard deviation
+                    # Apply Gaussian Blur in the width (horizontal) direction
+                    for i in range(x.shape[0]):
+                        x[i] = cv2.GaussianBlur(x[i], kernel_size, sigmaX) * kernel_size[0]
+                except:
+                    pass
+
+            kernel_size = (
+                int(self.args.ks[0] / 6), int(self.args.ks[1] / 6))  # This is a wide kernel that will blur horizontally
+            sigmaX = 0  # Let OpenCV automatically determine the standard deviation
+            # Apply Gaussian Blur in the width (horizontal) direction
+            upper_envelope_Img[0] = cv2.GaussianBlur(upper_envelope_Img[0], kernel_size, sigmaX) * kernel_size[0]
+            lower_envelope_Img[0] = cv2.GaussianBlur(lower_envelope_Img[0], kernel_size, sigmaX) * kernel_size[0]
+
+            x = x + upper_envelope_Img + lower_envelope_Img
+            return torch.from_numpy(x).float(), torch.from_numpy(d).float(), mu, stdTrue
+
+     
+        elif self.inferenceType =='MA':
+
+            seq_xO = np.copy(dataX)
+            seq_xO_mu = self.MA
+            scale = 1
+
+            std = (np.std(seq_xO, axis=0).reshape(1, -1) + 1e-7) / scale
+            swift = 0
+            if hasattr(self.args, 'muNorm'):
+                seq = (seq_xO_mu ** self.args.muNorm) * np.sign(seq_xO_mu)
+                mu0 = np.mean(seq, axis=0) + 1e-7
+                mu = np.sqrt(np.abs(mu0)) * np.sign(mu0).reshape(1, -1) - swift
+            else:
+                mu = np.mean(seq_xO_mu, axis=0).reshape(1, -1) - swift
+
+            stdTrue=  std * 1
+            seq_x = (seq_xO - mu) / stdTrue
+            MA = (self.MA - mu) / stdTrue
+           
+
+            MA=MA.T
+           
+            if hasattr(self.args, 'scal') and self.args.scal == 2:
+                seq_x = self.linear_interpolation(seq_x)
+
+            wholeSeq = np.zeros([(512 + 720) * 2, c])
+            wholeSeq[:seq_x.shape[0], :] = seq_x
+
+
+            _, MA_Img, _ = self.data2Pixel(MA[:seq_x.shape[0]], MA)
+         
+            x, y, d = self.data2Pixel(seq_x, wholeSeq)  # c,w,h
+
+            if self.args.ks[0] != 1 or self.args.ks[1] != 1:
+                try:
+                    kernel_size = (
+                    self.args.ks[0], self.args.ks[1])  # This is a wide kernel that will blur horizontally
+                    sigmaX = 0  # Let OpenCV automatically determine the standard deviation
+                    # Apply Gaussian Blur in the width (horizontal) direction
+                    for i in range(x.shape[0]):
+                        x[i] = cv2.GaussianBlur(x[i], kernel_size, sigmaX) * kernel_size[0]
+                except:
+                    pass
+
+            kernel_size = (
+                int(self.args.ks[0] / 6), int(self.args.ks[1] / 6))  # This is a wide kernel that will blur horizontally
+            sigmaX = 0  # Let OpenCV automatically determine the standard deviation
+            # Apply Gaussian Blur in the width (horizontal) direction
+            MA_Img[0] = cv2.GaussianBlur(MA_Img[0], kernel_size, sigmaX) * kernel_size[0]
+            
+
+            x = x + MA_Img 
+            return torch.from_numpy(x).float(), torch.from_numpy(d).float(), mu, stdTrue
+
+
+             
+        elif self.inferenceType =='MAKeyP':
+
+            seq_xO = np.copy(dataX)
+            seq_xO_mu = self.MA
+            scale = 1
+
+            std = (np.std(seq_xO, axis=0).reshape(1, -1) + 1e-7) / scale
+            swift = 0
+            if hasattr(self.args, 'muNorm'):
+                seq = (seq_xO_mu ** self.args.muNorm) * np.sign(seq_xO_mu)
+                mu0 = np.mean(seq, axis=0) + 1e-7
+                mu = np.sqrt(np.abs(mu0)) * np.sign(mu0).reshape(1, -1) - swift
+            else:
+                mu = np.mean(seq_xO_mu, axis=0).reshape(1, -1) - swift
+
+            stdTrue=  std * 1
+            seq_x = (seq_xO - mu) / stdTrue
+            MA = (self.MA - mu) / stdTrue
+            
+            
+            original_std = np.std(seq_x, axis=0) 
+            rolling_std = np.full_like(MA, original_std)
+            rolling_std[1200:1500]*=10
+           
+            if hasattr(self.args, 'scal') and self.args.scal == 2:
+                seq_x = self.linear_interpolation(seq_x)
+
+            wholeSeq = np.zeros([(512 + 720) * 2, c])
+            wholeSeq[:seq_x.shape[0], :] = seq_x
+
+
+            _, MA_Gaussian_Img, d_MA = self.data2PixelWithGaussian(
+            MA[:100], MA, rolling_std
+            )
+         
+            x, y, d = self.data2Pixel(seq_x, wholeSeq)  # c,w,h
+
+            if self.args.ks[0] != 1 or self.args.ks[1] != 1:
+                try:
+                    kernel_size = (
+                    self.args.ks[0], self.args.ks[1])  # This is a wide kernel that will blur horizontally
+                    sigmaX = 0  # Let OpenCV automatically determine the standard deviation
+                    # Apply Gaussian Blur in the width (horizontal) direction
+                    for i in range(x.shape[0]):
+                        x[i] = cv2.GaussianBlur(x[i], kernel_size, sigmaX) * kernel_size[0]
+                except:
+                    pass
+
+            
+
+            x = np.concatenate((x, MA_Gaussian_Img,np.zeros_like(MA_Gaussian_Img)), axis=0)
+            return torch.from_numpy(x).float(), torch.from_numpy(d).float(), mu, stdTrue
+
 
     def dataTransformationBatch(self, dataX):
         bs,T,C=dataX.shape
@@ -573,3 +863,12 @@ class RealTS(Dataset_ViTime):
 
     def __len__(self):
         return 20000
+
+
+
+
+
+
+
+
+    
