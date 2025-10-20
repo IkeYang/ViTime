@@ -26,7 +26,7 @@ The ViTime framework comprises four key modules:
 
 The complete architecture is illustrated below:
 
-![arc](test.jpg)
+![arc](newArc.jpg)
 > **Figure 1**: ViTime architecture overview. (a) Pipeline comparison. (b) ViTime network modules. (c) Complete architecture.
 
 ## 📊 Zero-Shot Performance
