@@ -49,16 +49,11 @@ class ViTimePrediction():
         
        
 
-        predictor = self.predictor
-        full_prediction = predictor(historical_data, future_length)
+    
+        full_prediction = self.predictor(historical_data, future_length)
         
         prediction = np.asarray(full_prediction).flatten()[len(historical_data):len(historical_data)+future_length]
         
-        # Step 3: check and linearly impute NaNs in output
-        if np.isnan(np.sum(prediction)):
-            s = pd.Series(prediction)
-            s.interpolate(method='linear', limit_direction='both', inplace=True)
-            prediction = s.to_numpy()
 
         return prediction
 
