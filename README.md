@@ -1,6 +1,6 @@
 # ViTime: A Vision Intelligence-Powered Foundation Model for Time Series Forecasting
 
-**[Paper](https://openreview.net/forum?id=XInsJDBIkp) | [Code](https://github.com/IkeYang/ViTime)**
+**[Paper](https://openreview.net/pdf?id=XInsJDBIkp) | [Code](https://github.com/IkeYang/ViTime)**
 
 This is the official repository for the paper: **"ViTime: Foundation Model for Time Series Forecasting Powered by Vision Intelligence"**, published in Transactions on Machine Learning Research (TMLR), 10/2025.
 
