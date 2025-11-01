@@ -102,31 +102,54 @@ class InferenceInterface:
                     new_state_dict[name] = v
                 model.load_state_dict(new_state_dict, strict=False)
 
+    
     def _interpolate_sequence(self, sequence, target_length):
         """
         Interpolates a time series sequence to a target length using linear interpolation.
 
+        This function can handle 2D (T, C) and 3D (T, C, S) arrays, where T is the time
+        axis, C is the channels axis, and S is the samples axis.
+
         Args:
-            sequence (np.ndarray): The input sequence, shape (T, C) or (T,).
-            target_length (int): The desired length of the output sequence.
+            sequence (np.ndarray): The input sequence.
+                                Shape (T, C) for standard time series, or
+                                Shape (T, C, S) for sampled time series.
+            target_length (int): The desired length of the output sequence (new T).
 
         Returns:
-            np.ndarray: The interpolated sequence, shape (target_length, C).
+            np.ndarray: The interpolated sequence with shape (target_length, C) or
+                        (target_length, C, S).
         """
-        if len(sequence.shape) == 1:
-            sequence = sequence.reshape(-1, 1)
+        original_length = sequence.shape[0]
 
-        T, C = sequence.shape
-        if T == target_length:
+        # Return the original sequence if no interpolation is needed.
+        if original_length == target_length:
             return sequence
 
-        interpolated_sequence = np.zeros((target_length, C))
-        x_original = np.arange(T)
-        x_new = np.linspace(0, T - 1, target_length)
+        # Store original shape details and reshape for interpolation if necessary.
+        # The interpolation function works efficiently on 2D arrays of shape (T, Features).
+        original_ndim = sequence.ndim
+        sequence_to_interp = sequence
+        if original_ndim == 3:
+            # Reshape (T, C, S) -> (T, C * S) to treat channels and samples as features.
+            t, c, s = sequence.shape
+            sequence_to_interp = sequence.reshape(t, c * s)
 
-        for i in range(C):
-            f = interp1d(x_original, sequence[:, i], kind='linear', fill_value='extrapolate')
-            interpolated_sequence[:, i] = f(x_new)
+        # Create original and new time axes for interpolation.
+        x_original = np.arange(original_length)
+        x_new = np.linspace(0, original_length - 1, target_length)
+
+        # Create the interpolation function.
+        # axis=0 ensures that we interpolate along the time dimension.
+        # This single call replaces the previous for-loop.
+        f = interp1d(x_original, sequence_to_interp, kind='linear', axis=0, fill_value='extrapolate')
+        interpolated_sequence = f(x_new)
+
+        # Reshape the result back to its original dimensionality.
+        if original_ndim == 3:
+            # Reshape (target_length, C * S) -> (target_length, C, S)
+            interpolated_sequence = interpolated_sequence.reshape(target_length, c, s)
+
         return interpolated_sequence
 
     def _data2pixel(self, dataX, dataY, curve=False):
@@ -185,41 +208,92 @@ class InferenceInterface:
 
         return imgX0, imgY0, d
 
-    def _pixel2data(self, imgX0, method='max'):
+    def _pixel2data(self, imgX0, method='max', sampleNumber=None):
         """
-        Converts the pixel-based image representation back to numerical data.
+        将基于像素的图像表示转换回数值数据。
+        如果提供了 sampleNumber，则从 H 维度的分布中采样。
 
         Args:
-            imgX0 (torch.Tensor or np.ndarray): The pixel data, shape (B, C, W, H).
-            method (str): Method for conversion. 'max' takes the pixel with the highest
-                          intensity. 'expectation' calculates a weighted average.
+            imgX0 (torch.Tensor or np.ndarray): 像素数据，形状为 (B, C, W, H)。
+                                                H 维度是一个经过 softmax 归一化的分布。
+            method (str): 当 sampleNumber 为 None 时的转换方法。
+                        'max' 取具有最高概率的像素索引。
+                        'expectation' 计算加权平均值（期望值）。
+            sampleNumber (int, optional): 如果为整数，则代表在 H 维度上按照其概率
+                                        采样 sampleNumber 个索引。
+                                        如果为 None，则遵循 'method' 参数的逻辑。
+                                        默认为 None。
 
         Returns:
-            np.ndarray: The converted numerical data, shape (B, C, W).
+            np.ndarray: 转换后的数值数据。
+                        如果 sampleNumber 为 None，形状为 (B, W, C)。
+                        如果 sampleNumber 是整数，形状为 (B, W, C, sampleNumber)。
         """
+        # 确保输入是4D张量
         if len(imgX0.shape) == 3:
-            imgX0 = imgX0.unsqueeze(0)
+            if isinstance(imgX0, torch.Tensor):
+                imgX0 = imgX0.unsqueeze(0)
+            else:
+                imgX0 = np.expand_dims(imgX0, 0)
 
         bs, ch, w, h = imgX0.shape
 
-        if isinstance(imgX0, torch.Tensor):
-            imgX0 = imgX0.cpu().detach().numpy()
+        # --- 采样或确定性转换逻辑 ---
+        if sampleNumber is not None:
+            # --- 新增：按概率采样 ---
+            # 确保数据是 torch.Tensor 以使用 torch.multinomial
+            if isinstance(imgX0, np.ndarray):
+                imgX0_torch = torch.from_numpy(imgX0).to(self.device) # 假定 self.device 存在
+            else:
+                imgX0_torch = imgX0
 
-        if method == 'max':
-            # Find the index of the pixel with the maximum value in each column
-            indx = np.argmax(imgX0, axis=-1)
-        elif method == 'expectation':
-            # Calculate the expected value of the pixel index
-            # Normalize probabilities along the height dimension
-            imgX0 = imgX0 / (np.sum(imgX0, axis=-1, keepdims=True) + 1e-8)
-            indNumber = np.arange(0, h)
-            imgX0 *= indNumber # Weight each probability by its index
-            indx = np.sum(imgX0, axis=-1) # Sum to get the expectation
+            # 重塑张量以便进行批处理采样: (B, C, W, H) -> (B*C*W, H)
+            # .contiguous() 确保张量在内存中是连续的
+            probs_flat = imgX0_torch.permute(0, 1, 2, 3).contiguous().view(-1, h)
 
-        # Convert pixel index back to numerical value
+            # 从每个分布中采样 sampleNumber 个索引
+            # replacement=True 意味着可以重复采样同一个索引
+            # 结果形状为 (B*C*W, sampleNumber)
+            sampled_indices_flat = torch.multinomial(probs_flat, sampleNumber, replacement=True)
+
+            # 将采样结果重塑回原始维度: (B, C, W, sampleNumber)
+            indx = sampled_indices_flat.view(bs, ch, w, sampleNumber)
+            
+            # 将结果转换为 numpy 数组以进行后续计算
+            indx = indx.cpu().detach().numpy()
+
+        else:
+            # --- 原有逻辑：当 sampleNumber 为 None 时 ---
+            if isinstance(imgX0, torch.Tensor):
+                imgX0 = imgX0.cpu().detach().numpy()
+
+            if method == 'max':
+                # 在每个列中找到具有最大值的像素的索引
+                indx = np.argmax(imgX0, axis=-1)
+            elif method == 'expectation':
+                # 计算像素索引的期望值
+                # 假设 imgX0 已经是归一化的，但为稳健性起见，保留归一化步骤
+                imgX0_norm = imgX0 / (np.sum(imgX0, axis=-1, keepdims=True) + 1e-8)
+                indNumber = np.arange(h) # 代表每个像素位置的索引值
+                # 利用广播机制计算期望值
+                indx = np.sum(imgX0_norm * indNumber, axis=-1)
+            else:
+                raise ValueError("方法必须是 'max' 或 'expectation'")
+
+        # --- 将像素索引转换回数值 ---
         maxstd = self.maxScal
+        # 注意：这里使用 self.h 是为了与原函数的逻辑保持一致
         resolution = maxstd * 2 / (self.h - 1)
-        res = np.transpose(indx, (0, 2, 1)) * resolution - maxstd
+
+        # 根据是否采样来调整转置操作
+        if sampleNumber is not None:
+            # indx 形状: (B, C, W, sampleNumber) -> 转置后形状: (B, W, C, sampleNumber)
+            transposed_indx = np.transpose(indx, (0, 2, 1, 3))
+        else:
+            # indx 形状: (B, C, W) -> 转置后形状: (B, W, C)
+            transposed_indx = np.transpose(indx, (0, 2, 1))
+
+        res = transposed_indx * resolution - maxstd
 
         return res
 
@@ -249,8 +323,8 @@ class InferenceInterface:
 
         return x, cycleNumber
 
-    def inference(self, x, prediction_length=None):
-        
+    def inference(self, x, prediction_length=None,sampleNumber=None,tempature=1):
+        self.tempature=tempature
         with torch.no_grad():
           
             # vitime pred
@@ -330,14 +404,19 @@ class InferenceInterface:
 
     
             
-            # Extract the prediction and convert it back to numerical data
-            y_pred_np = self._pixel2data(y_pred[:, 0:1, :, :]) # Use only the first channel for output
-
-            # De-normalize the data to its original scale
+            y_pred_np = self._pixel2data(y_pred[:, 0:1, :, :], sampleNumber=sampleNumber) # Use only the first channel for output
+            
+            # 2. De-normalize the data.
+            #    - We take the first item from the batch, shape: (W, C_slice, S), e.g., (64, 1, 5)
+            #    - The de-normalization is applied element-wise.
             y_pred_denorm = y_pred_np[0] * std + mu
 
-            # Interpolate the prediction back to the original length
+            # 3. Interpolate the prediction back to the original length.
+            #    - The new _interpolate_sequence is designed to handle this 3D input.
+            #    - Input `y_pred_denorm` shape: (W, C_slice, S), e.g., (64, 1, 5)
+            #    - The function will interpolate the first dimension from W -> t_total_original.
+            #    - Output `y_pred_original` shape: (t_total_original, C_slice, S), e.g., (100, 1, 5)
             y_pred_original = self._interpolate_sequence(y_pred_denorm, t_total_original)
             
-            
+            # print(y_pred_original.shape,sampleNumber)
             return y_pred_original
