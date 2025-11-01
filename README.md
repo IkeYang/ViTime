@@ -4,7 +4,7 @@
 
 This is the official repository for the paper: **"ViTime: Foundation Model for Time Series Forecasting Powered by Vision Intelligence"**, published in Transactions on Machine Learning Research (TMLR), 10/2025.
 
-ViTime is a pioneering foundation model for Time Series Forecasting (TSF) that fundamentally shifts the paradigm from traditional numerical fitting to a novel approach powered by vision intelligence. Instead of operating directly on numerical sequences, ViTime transforms time series into binary images, leveraging a formally defined metric space to perform forecasting tasks. This vision-based paradigm enhances robustness, generalizability, and performance, especially in zero-shot and few-shot scenarios.
+ViTime is a pioneering foundation model for **both point and probabilistic** Time Series Forecasting (TSF) that fundamentally shifts the paradigm from traditional numerical fitting to a novel approach powered by vision intelligence. Instead of operating directly on numerical sequences, ViTime transforms time series into binary images, leveraging a formally defined metric space to perform forecasting tasks. This vision-based paradigm enhances robustness, generalizability, and performance, especially in zero-shot and few-shot scenarios.
 
 ## 🌟 Key Contributions
 
