@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 
 
 # ============ Import tools ============
@@ -7,13 +8,15 @@ from tools import (
     ViTimePredictor,
 )
 
-import numpy as np
-import pandas as pd
-import pandas as pd
-import numpy as np
-
 class ViTimePrediction():
-    def __init__(self, device='cuda:0', model_name='MAE',lookbackRatio=1,tempature=1):
+    def __init__(
+        self,
+        device='cuda:0',
+        model_name='MAE',
+        lookbackRatio=1,
+        tempature=1,
+        model_path=None,
+    ):
         """
         Initialize the ViTime predictor.
 
@@ -21,11 +24,18 @@ class ViTimePrediction():
             device (str): Compute device (e.g., 'cuda:0' or 'cpu').
             model_name (str): Model name to select backbone/weights.
             lookbackRatio (float): Fixed lookback ratio when not adaptive.
+            model_path (str, optional): Local checkpoint override. If omitted,
+                the versioned checkpoint is downloaded from Hugging Face Hub.
            
         """
         
         self.lookbackRatio = lookbackRatio
-        self.predictor = ViTimePredictor(device=device, model_name=model_name,tempature=tempature)
+        self.predictor = ViTimePredictor(
+            device=device,
+            model_name=model_name,
+            tempature=tempature,
+            model_path=model_path,
+        )
         
          
     def prediction(self, historical_data, future_length,sampleNumber=None):

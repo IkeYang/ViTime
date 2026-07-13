@@ -15,8 +15,9 @@ import config
 class ViTimePredictor:
     """Thin wrapper around the underlying inference interface.
 
-    Initializes model weights from `config.VITIME_MODEL_PATH` and exposes
-    a callable that maps a time series and `future_length` to predictions.
+    Resolves model weights from a local override or Hugging Face Hub and
+    exposes a callable that maps a time series and `future_length` to
+    predictions.
     """
 
 
@@ -25,12 +26,15 @@ class ViTimePredictor:
         device: str = 'cuda:0',
         model_name: str = 'MAE',
         tempature=1,
-
+        model_path: str | None = None,
     ) -> None:
-        
-        model_path_env = config.VITIME_MODEL_PATH  
-        self.tempature=tempature
-        self._iface = InferenceInterface(model_path_env,  model_name=model_name, device=device)
+        resolved_model_path = config.resolve_model_path(model_path)
+        self.tempature = tempature
+        self._iface = InferenceInterface(
+            resolved_model_path,
+            model_name=model_name,
+            device=device,
+        )
 
     def __call__(self, time_series, future_length,sampleNumber) -> np.ndarray:
       

@@ -1,6 +1,6 @@
 # ViTime: A Vision Intelligence-Powered Foundation Model for Time Series Forecasting
 
-**[Paper](https://openreview.net/pdf?id=XInsJDBIkp) | [Code](https://github.com/IkeYang/ViTime)**
+**[Paper](https://openreview.net/pdf?id=XInsJDBIkp) | [Code](https://github.com/IkeYang/ViTime) | [Model](https://huggingface.co/IkeYEUNG/ViTime)**
 
 This is the official repository for the paper: **"ViTime: Foundation Model for Time Series Forecasting Powered by Vision Intelligence"**, published in Transactions on Machine Learning Research (TMLR), 10/2025.
 
@@ -77,17 +77,52 @@ cd ViTime
 
 Next, install the required dependencies. We recommend using a virtual environment.
 ```bash
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
-### 2. Download Pre-trained Model
+Python 3.10 or 3.11 is recommended for compatibility with the pinned PyTorch version.
 
-Download our pre-trained model weights from the link below and place them in the appropriate directory.
+### 2. Pre-trained Model (Automatic Download)
 
-- **Model**: `ViTime_Model.pth`
-- **Download Link**: [Google Drive](https://drive.google.com/file/d/1ex5ZrIKhsnLj2EuUkP9We3Bpcr1kVh5d/view?usp=sharing)
+No manual model download or path editing is required. The first time
+`ViTimePrediction` is initialized, ViTime downloads the versioned public
+checkpoint from [Hugging Face](https://huggingface.co/IkeYEUNG/ViTime/tree/v1.0.0)
+and stores it in the standard Hugging Face cache. Later runs reuse the cached
+file.
 
-After downloading, please ensure the path to the model is correctly specified in your configuration file.
+- **Repository**: `IkeYEUNG/ViTime`
+- **Revision**: `v1.0.0`
+- **Checkpoint**: `ViTime_Model.pth`
+
+To download the checkpoint in advance without starting inference:
+
+```bash
+hf download IkeYEUNG/ViTime ViTime_Model.pth --revision v1.0.0
+```
+
+Public downloads do not require a Hugging Face account or access token.
+
+For offline use or a custom checkpoint, pass a local path directly:
+
+```python
+vitime = ViTimePrediction(
+    device='cuda:0',
+    model_path='/path/to/ViTime_Model.pth',
+)
+```
+
+Alternatively, set the `VITIME_MODEL_PATH` environment variable before
+running ViTime:
+
+```bash
+export VITIME_MODEL_PATH=/path/to/ViTime_Model.pth
+```
+
+PowerShell:
+
+```powershell
+$env:VITIME_MODEL_PATH = "C:\path\to\ViTime_Model.pth"
+```
 
 ## 💻 Usage / Inference
 
